@@ -1,0 +1,90 @@
+
+
+clc
+clear all
+
+
+
+%% import data
+cd .. 
+cd data_bootstrap_input
+load('EuropeanBanksData_bis.mat');
+cd .. 
+cd code
+
+clearvars -except EuropeBank_data
+
+%% Set parameters
+
+rng(89);
+
+%no. of nets for each ensemble
+nNetworks = 5; 
+
+%get number of time snapshots
+t_steps = length(EuropeBank_data);
+
+z_vec = linspace(21000, 31000, 1000);
+
+%% Cycle through all snapshots to find z and estimate ensembles
+
+for t = 2:t_steps
+    
+    display(['Year ' num2str(EuropeBank_data(t).year)]);
+    
+    nNodes = length(EuropeBank_data(t).id);
+    
+    %% find z
+    
+    %input density 
+    k_sum = (nNodes*(nNodes-1))*0.1;
+    
+    %initialise fitness 
+    IBAssets_frac = EuropeBank_data(t).IBassets/sum(EuropeBank_data(t).IBassets);
+    IBLiab_frac = EuropeBank_data(t).IBliabilities/sum(EuropeBank_data(t).IBliabilities);
+    
+%     fitness = (EuropeBank_data(t).IBassets+EuropeBank_data(t).IBliabilities)...
+%         /10^8;
+    fitness = (IBAssets_frac + IBLiab_frac)/2;
+    
+    %initiliaze z solutions vector   
+    
+    [z, P] = f_bootstrap_z(nNodes, k_sum, fitness, z_vec);
+    
+    %% Evaluate networks for the ensemble
+    sum_k = zeros(1,nNetworks);
+    
+    for n = 1:nNetworks
+        
+        %creat adj matrix
+        [adj, sum_k(n)] = f_bootstrap_ensembles(nNodes, P);
+        
+        %assign weights
+        [adj, actual_sum_rows, actual_sum_cols, diff] = f_bootstrap_weights2(adj,...
+            IBAssets_frac, IBLiab_frac, EuropeBank_data(t).IBassets);
+        
+        %export yearly data
+        subfolder = num2str(EuropeBank_data(t).year);
+        
+        cd ..
+        cd data_bootstrap_output
+        if exist(subfolder, 'dir') ~= 7
+            mkdir(subfolder);
+        end
+        cd(subfolder)
+        
+        flname = strcat(subfolder, 'exposure_net', num2str(n), '.mat');
+        save(flname, 'adj', 'actual_sum_rows', 'actual_sum_cols', 'z'); 
+        
+        cd ..
+        cd ..
+        cd code
+        
+        sentence = ['ensemble no.', num2str(n), ' of year ', num2str(EuropeBank_data(t).year),...
+            ' exported in folder.'];
+        disp (sentence);
+        
+    end
+    
+    
+end
